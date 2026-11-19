@@ -1,0 +1,199 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using DSAnimStudio.Localization;
+
+namespace DSAnimStudio.TaeEditor
+{
+    public partial class TaeGameDirPicker : Form
+    {
+        public TaeGameDirPicker()
+        {
+            InitializeComponent();
+            WinformsLoc.Apply(this);
+            this.Shown += (_, __) => WinformsLoc.Apply(this);
+        }
+
+        public bool ClickedApply = false;
+
+        private string _saveFile;
+        private string SaveFile
+        {
+            get => _saveFile;
+            set
+            {
+                _saveFile = value;
+                textBoxProjectDirectory.Text = System.IO.Path.GetDirectoryName(value);
+            }
+        }
+
+
+        //public TaeProjectJson SaveJsonData { get; set; } = new TaeProjectJson();
+        //TODO：检查一下这些有没有线程问题？估计得用 form 去 invoke。
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public string SelectedGameDir
+        {
+            get => textBoxGameDir.Text;
+            set => textBoxGameDir.Text = value;
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public string SelectedModengineDir
+        {
+            get => textBoxModDir.Text;
+            set => textBoxModDir.Text = value;
+        }
+        
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool LoadLooseParams
+        {
+            get => checkBoxLoadLooseParams.Checked;
+            set => checkBoxLoadLooseParams.Checked = value;
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool LoadUnpackedGameFiles
+        {
+            get => checkBoxLoadUnpackedGameFiles.Checked;
+            set => checkBoxLoadUnpackedGameFiles.Checked = value;
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool DisableInterrootDCX
+        {
+            get => checkBoxDisableInterrootDCX.Checked;
+            set => checkBoxDisableInterrootDCX.Checked = value;
+        }
+
+        public bool InitAndCheckIfNeedsToBeShownLol()
+        {
+            bool shouldBeShown = true;
+            SaveFile = zzz_DocumentManager.CurrentDocument.GameRoot.ProjectPath;
+            zzz_DocumentManager.CurrentDocument.GameData.LoadProjectJson();
+
+            zzz_DocumentManager.CurrentDocument.GameData.ProjectJsonLockAct(proj =>
+            {
+                SelectedGameDir = proj.GameDirectory;
+                SelectedModengineDir = proj.ModEngineDirectory;
+                LoadLooseParams = proj.LoadLooseParams;
+                LoadUnpackedGameFiles = proj.LoadUnpackedGameFiles;
+                DisableInterrootDCX = proj.DisableInterrootDCX;
+            });
+
+
+            return shouldBeShown;
+        }
+
+        private void TaeGameDirPicker_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void buttonSave_Click(object sender, EventArgs e)
+        {
+            zzz_DocumentManager.CurrentDocument.GameRoot.ProjectPath = SaveFile;
+            zzz_DocumentManager.CurrentDocument.GameData.ProjectJsonLockAct(proj =>
+            {
+                proj.GameDirectory = SelectedGameDir;
+                proj.ModEngineDirectory = SelectedModengineDir;
+                proj.LoadLooseParams = LoadLooseParams;
+                proj.LoadUnpackedGameFiles = LoadUnpackedGameFiles;
+                proj.DisableInterrootDCX = DisableInterrootDCX;
+                proj.Save(SaveFile, zzz_DocumentManager.CurrentDocument);
+            });
+            zzz_DocumentManager.CurrentDocument.GameData.SaveProjectJson();
+
+
+            ClickedApply = true;
+            Close();
+        }
+
+        private void buttonBrowseGameDir_Click(object sender, EventArgs e)
+        {
+            var dir = SelectedGameDir;
+            var browseDlg = new SaveFileDialog()
+            {
+                FileName = "GO TO DIRECTORY AND CLICK SAVE",
+                CheckFileExists = false,
+                CheckPathExists = true,
+                OverwritePrompt = false,
+                Title = "Select Game Directory",
+            };
+            if (!string.IsNullOrWhiteSpace(dir) && System.IO.Directory.Exists(dir))
+            {
+                browseDlg.InitialDirectory = dir;
+            }
+            if (browseDlg.ShowDialog() == DialogResult.OK)
+            {
+                SelectedGameDir = System.IO.Path.GetDirectoryName(browseDlg.FileName);
+            }
+        }
+
+        private void buttonBrowseModDir_Click(object sender, EventArgs e)
+        {
+            var dir = SelectedModengineDir;
+            var browseDlg = new SaveFileDialog()
+            {
+                FileName = "GO TO DIRECTORY AND CLICK SAVE",
+                CheckFileExists = false,
+                CheckPathExists = true,
+                OverwritePrompt = false,
+                Title = "Select ModEngine Directory",
+            };
+            if (!string.IsNullOrWhiteSpace(dir) && System.IO.Directory.Exists(dir))
+            {
+                browseDlg.InitialDirectory = dir;
+            }
+            if (browseDlg.ShowDialog() == DialogResult.OK)
+            {
+                SelectedModengineDir = System.IO.Path.GetDirectoryName(browseDlg.FileName);
+            }
+        }
+
+        private void buttonClearModDir_Click(object sender, EventArgs e)
+        {
+            SelectedModengineDir = "";
+        }
+
+        private void buttonHelpLoadLooseParams_Click(object sender, EventArgs e)
+        {
+            System.Windows.Forms.MessageBox.Show(Loc.T("If checked, DS Anim Studio will load parameters from loose GameParam file rather than from encrypted regulation. Works exactly like the ModEngine setting \"loadLooseParams\"."),
+                Loc.T("Explanation"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void buttonHelpLoadUxmFiles_Click(object sender, EventArgs e)
+        {
+            System.Windows.Forms.MessageBox.Show(Loc.T("If checked, DS Anim Studio will load loose files unpacked with UXM instead of the ones in the data archives. \nWorks exactly like the ModEngine setting \"loadUXMFiles\".\nHas no effect on games that do not have archive files (DeS, DS1:PTDE, BB)"),
+                Loc.T("Explanation"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void noPaddingButtonHelpModEngindDir_Click(object sender, EventArgs e)
+        {
+            System.Windows.Forms.MessageBox.Show(Loc.T("If a path is entered here, it will function exactly like the mod override directory in ModEngine, making DS Anim Studio load files from there with first priority, only falling back to loading from the regular game directory if the file isn't found in the ModEngine directory."),
+                Loc.T("Explanation"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void buttonABORT_Click(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        private void TaeGameDirPicker_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            //if (!ClickedApply)
+            //    System.Threading.Thread.CurrentThread.Interrupt();
+        }
+
+        private void buttonHelpDisableInterrootDCX_Click(object sender, EventArgs e)
+        {
+            System.Windows.Forms.MessageBox.Show(Loc.T("Removes .dcx extension from all paths in the game data directory. For use with DS1 PTDE unpacked via UDSFM.\n\nYou definitely want to enable Load Unpacked Game Files with this option."),
+                Loc.T("Explanation"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+}

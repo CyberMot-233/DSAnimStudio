@@ -1,0 +1,494 @@
+﻿using DSAnimStudio.TaeEditor;
+using ImGuiNET;
+using Microsoft.Xna.Framework;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection.Metadata;
+using System.Text;
+using System.Threading.Tasks;
+using static DSAnimStudio.zzz_SoundManagerIns;
+using static System.ComponentModel.Design.ObjectSelectorEditor;
+
+using DSAnimStudio.Localization;
+namespace DSAnimStudio.ImguiOSD
+{
+    public abstract partial class Window
+    {
+        public class Sound : Window
+        {
+            public override SaveOpenStateTypes GetSaveOpenStateType() => SaveOpenStateTypes.SaveAlways;
+
+            public override string NewImguiWindowTitle => Loc.Win("Sound");
+
+            private string addBankTextField = "";
+
+            protected override void Init()
+            {
+                
+            }
+
+            protected override void BuildContents(ref bool anyFieldFocused)
+            {
+                ImGui.SliderFloat(Loc.TF("Volume"), ref zzz_DocumentManager.CurrentDocument.SoundManager.AdjustSoundVolume, 0, 200, "%.2f%%");
+                anyFieldFocused |= ImGui.IsItemActive();
+                ImGui.Button(Loc.T("Reset to 100%"));
+                if (ImGui.IsItemClicked())
+                    zzz_DocumentManager.CurrentDocument.SoundManager.AdjustSoundVolume = 100;
+                
+
+                var document = MainDoc;
+                var soundManager = document?.SoundManager;
+
+                if (soundManager == null)
+                    return;
+
+                ImGui.Separator();
+
+                
+
+                ImGui.Checkbox(Loc.T("SHOW DEBUG DIAGNOSTICS"), ref soundManager.DebugShowDiagnostics);
+
+                ImGui.Separator();
+
+                var WW = soundManager.WwiseManager;
+                var MO = soundManager.MagicOrchestraManager;
+
+                if (Main.IsDebugBuild)
+                {
+
+                    if (soundManager.EngineType is EngineTypes.FMOD)
+                    {
+
+                    }
+                    else if (soundManager.EngineType is EngineTypes.Wwise)
+                    {
+                        ImGui.Checkbox(Loc.T("Wwise - KEEP CONVERT TEMP FILES"), ref zzz_WwiseManagerInst.DEBUG_KEEP_CONVERT_TEMP_FILES);
+                    }
+                    else if (soundManager.EngineType is EngineTypes.MagicOrchestra)
+                    {
+                        ImGui.Checkbox(Loc.T("MagicOrchestra - KEEP CONVERT TEMP FILES"), ref zzz_MagicOrchestraManagerInst.DEBUG_KEEP_CONVERT_TEMP_FILES);
+                    }
+
+                    ImGui.Button(Loc.T("Clear /Temp/"));
+                    if (ImGui.IsItemClicked())
+                    {
+                        var dir = $@"{Main.Directory}\Temp";
+                        if (Directory.Exists(dir))
+                            Directory.Delete(dir, recursive: true);
+                        if (!Directory.Exists(dir))
+                            Directory.CreateDirectory(dir);
+                    }
+
+                }
+
+                ImGui.Separator();
+                
+
+                bool soundEnabled = !zzz_SoundManagerIns.SOUND_DISABLED;
+                ImGui.Checkbox(Loc.T("Enable Audio System"), ref soundEnabled);
+                if (!soundEnabled != zzz_SoundManagerIns.SOUND_DISABLED)
+                {
+                    zzz_SoundManagerIns.SOUND_DISABLED = !soundEnabled;
+                    if (soundEnabled)
+                    {
+                        //soundManager.SetEngineToCurrentGame(MainDoc.GameRoot.GameType);
+                        MainDoc?.EditorScreen?.Graph?.ViewportInteractor?.LoadFmodSoundsForCurrentModel();
+                    }
+                    else
+                    {
+
+                        soundManager.PurgeLoadedAssets();
+                    }
+                }
+                ImGui.Separator();
+
+                ImGui.Button(Loc.T("Stop All Sounds"));
+                if (ImGui.IsItemClicked())
+                    soundManager.StopAllSounds();
+
+                ImGui.Button(Loc.T("Purge Sound Cache"));
+                if (ImGui.IsItemClicked())
+                {
+                    soundManager.PurgeLoadedAssets();
+                    soundManager.SetEngineToCurrentGame(MainDoc.GameRoot.GameType, clearMasterBankList: false, clearLookupBankList: false);
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, false);
+                }
+
+                ImGui.Button(Loc.T("Reset To Default Bank Load Order"));
+                if (ImGui.IsItemClicked())
+                {
+                    soundManager.InitDefaultSoundBanksToLoad();
+                    soundManager.CopySoundBanksFromThisToProj();
+                    soundManager.LoadSoundbanksFromListIfNeeded();
+                }
+
+                ImGui.Separator();
+
+                lock (soundManager._lock_LookupBanks)
+                {
+                    
+
+                    var s = ImGui.GetStyle();
+                    var t = s.ItemSpacing.Y;
+                    float lnHeight = ImGui.GetTextLineHeight();
+                    int bankListHeightInItems = (int)(((this.LastSize.Y / Main.DPI) / 25)) - 4;
+
+                    if (bankListHeightInItems < 2)
+                        bankListHeightInItems = 2;
+
+                    if (ImGui.BeginTable(Loc.T("test_table"), 2, ImGuiTableFlags.Borders | ImGuiTableFlags.NoSavedSettings))
+                    {
+
+                        ImGui.TableNextColumn();
+
+                        lock (soundManager._lock_BankNameArray)
+                        {
+                            if (soundManager.BankNameArray != null)
+                            {
+                                ImGui.Text(Loc.T("Add Bank From List:"));
+
+                                ImGui.ListBox(Loc.T("###All Banks"), ref soundManager.BankNameArray_SelectedIndex,
+                                    soundManager.BankNameArray,
+                                    soundManager.BankNameArray.Length,
+                                    bankListHeightInItems - 1);
+
+                                if (ImGui.IsItemFocused())
+                                    anyFieldFocused = true;
+
+                                int selNameIndex = soundManager.BankNameArray_SelectedIndex;
+                                if (selNameIndex < 0)
+                                    ImGuiDebugDrawer.PushDisabled();
+                                if (Tools.SimpleClickButton(Loc.T("Add Selected From List")))
+                                {
+                                    var selected = soundManager.BankNameArray[selNameIndex];
+
+                                    lock (soundManager._lock_LookupBanks)
+                                    {
+                                        if (soundManager.LookupBanks == null)
+                                            soundManager.LookupBanks = new string[] { selected };
+                                        else if (!soundManager.LookupBanks.Contains(selected))
+                                        {
+                                            var banks = soundManager.LookupBanks.ToList();
+                                            banks.Add(selected);
+                                            soundManager.LookupBanks = banks.ToArray();
+                                        }
+                                    }
+
+                                    soundManager.CopySoundBanksFromThisToProj();
+                                    soundManager.LoadSoundbanksFromListIfNeeded();
+
+                                    if (soundManager.EngineType == EngineTypes.FMOD)
+                                        soundManager.ParentDocument.Fmod.InitFmodEventSysForThisDocument();
+                                }
+
+                                if (selNameIndex < 0)
+                                    ImGuiDebugDrawer.PopDisabled();
+
+
+                                ImGui.Text(Loc.T("Add Exact Bank:"));
+
+                                ImGui.InputText(Loc.T("###AddBankTextField"), ref addBankTextField, 64);
+                                if (ImGui.IsItemFocused())
+                                    anyFieldFocused = true;
+
+                                ImGui.SameLine();
+                                if (Tools.SimpleClickButton(Loc.T("Add")))
+                                {
+
+                                    var banks = soundManager.LookupBanks.ToList();
+                                    if (!banks.Contains(addBankTextField.ToLower()))
+                                    {
+                                        banks.Add(addBankTextField.ToLower());
+                                        soundManager.LookupBanks = banks.ToArray();
+
+                                        soundManager.CopySoundBanksFromThisToProj();
+                                        soundManager.LoadSoundbanksFromListIfNeeded();
+
+                                        if (soundManager.EngineType == EngineTypes.FMOD)
+                                            soundManager.ParentDocument.Fmod.InitFmodEventSysForThisDocument();
+                                    }
+                                }
+                            }
+                        }
+
+                        ImGui.TableNextColumn();
+
+                        if (soundManager.LookupBanks != null)
+                        {
+                            ImGui.Text(Loc.T("Sound Bank Load Order:"));
+
+                            ImGui.ListBox(Loc.T("###Banks To Lookup Sounds From"), ref soundManager.LookupBanks_SelectedIndex,
+                                soundManager.LookupBanks,
+                                soundManager.LookupBanks.Length,
+                                bankListHeightInItems);
+
+                            if (ImGui.IsItemFocused())
+                                anyFieldFocused = true;
+
+
+
+                            int selIndex = soundManager.LookupBanks_SelectedIndex;
+                            int count = soundManager.LookupBanks.Length;
+                            //if (selIndex < 0)
+                            //    ImGuiDebugDrawer.PushDisabled();
+
+                            ImGui.Text(Loc.T("For selected bank:"));
+
+                            if (Tools.SimpleClickButton(Loc.T("×###Remove Selected Bank"), selIndex >= 0 && selIndex < count))
+                            {
+                                if (selIndex >= 0 && selIndex < count)
+                                {
+                                    var selected = soundManager.LookupBanks[selIndex];
+
+                                    if (soundManager.LookupBanks.Contains(selected))
+                                    {
+                                        var banks = soundManager.LookupBanks.ToList();
+                                        banks.Remove(selected);
+                                        soundManager.LookupBanks = banks.ToArray();
+                                    }
+
+                                    soundManager.CopySoundBanksFromThisToProj();
+                                    soundManager.LoadSoundbanksFromListIfNeeded();
+
+                                    if (soundManager.EngineType == EngineTypes.FMOD)
+                                        soundManager.ParentDocument.Fmod.InitFmodEventSysForThisDocument();
+                                }
+
+
+
+                            }
+
+                            ImGui.SameLine();
+
+                            if (Tools.SimpleClickButton(Loc.T("↑###Move Selected Bank Up"), selIndex >= 1 && selIndex < count))
+                            {
+                                if (selIndex >= 1 && selIndex < count)
+                                {
+
+                                    var prev = soundManager.LookupBanks[selIndex - 1];
+                                    var sel = soundManager.LookupBanks[selIndex];
+
+                                    soundManager.LookupBanks[selIndex] = prev;
+                                    soundManager.LookupBanks[selIndex - 1] = sel;
+
+                                    soundManager.LookupBanks_SelectedIndex = --selIndex;
+
+                                    soundManager.CopySoundBanksFromThisToProj();
+                                    soundManager.LoadSoundbanksFromListIfNeeded();
+
+                                    if (soundManager.EngineType == EngineTypes.FMOD)
+                                        soundManager.ParentDocument.Fmod.InitFmodEventSysForThisDocument();
+                                }
+                            }
+
+                            ImGui.SameLine();
+
+                            bool moveDownBtn = Tools.SimpleClickButton(Loc.T("↓###Move Selected Bank Down"), selIndex >= 0 && selIndex < count - 1);
+                            if (ImGui.IsItemHovered())
+                                ImGui.SetTooltip(Loc.T("Move Down"));
+
+                            if (moveDownBtn)
+                            {
+                                
+
+                                if (selIndex >= 0 && selIndex < count - 1)
+                                {
+
+                                    var sel = soundManager.LookupBanks[selIndex];
+                                    var next = soundManager.LookupBanks[selIndex + 1];
+
+                                    soundManager.LookupBanks[selIndex] = next;
+                                    soundManager.LookupBanks[selIndex + 1] = sel;
+
+                                    soundManager.LookupBanks_SelectedIndex = ++selIndex;
+
+                                    soundManager.CopySoundBanksFromThisToProj();
+                                    soundManager.LoadSoundbanksFromListIfNeeded();
+
+                                    if (soundManager.EngineType == EngineTypes.FMOD)
+                                        soundManager.ParentDocument.Fmod.InitFmodEventSysForThisDocument();
+                                }
+                            }
+
+                            var y = ImGui.GetCursorPosY();
+                            y += 2;
+                            ImGui.SetCursorPosY(y);
+                        }
+
+                        //if (selIndex < 0)
+                        //    ImGuiDebugDrawer.PopDisabled();
+
+
+
+
+
+
+                        ImGui.EndTable();
+                    }
+
+
+                }
+                
+                ImGui.Separator();
+
+                if (soundManager.EngineType is EngineTypes.Wwise)
+                {
+
+                    Main.Config.Wwise_ShowMissingBankWarnings = MenuBar.CheckboxBig(Loc.T("Show Wwise Bank Not Found Warnings"), Main.Config.Wwise_ShowMissingBankWarnings);
+
+
+
+
+
+
+
+
+
+                    ImGui.PushItemWidth(OSD.DefaultItemWidth * 3);
+                    if (WW.DefensiveMaterialNames != null && WW.DefensiveMaterialNames.Length > 0)
+                        ImGui.ListBox(Loc.T("Floor Material"), ref WW.DefensiveMaterialIndex, WW.DefensiveMaterialNames, WW.DefensiveMaterialNames.Length);
+                    if (ImGui.IsItemFocused())
+                        anyFieldFocused = true;
+
+                    //ImGui.ListBox("Armor Material (Top)", ref Wwise.ArmorMaterialIndexTop, Wwise.ArmorMaterialNames, Wwise.ArmorMaterialNames.Length);
+                    //ImGui.ListBox("Armor Material (Bottom)", ref Wwise.ArmorMaterialIndexBottom, Wwise.ArmorMaterialNames, Wwise.ArmorMaterialNames.Length);
+
+                    //ImGui.ListBox("Player Voice Type", ref Wwise.PlayerVoiceIndex, Wwise.PlayerVoiceTypes, Wwise.PlayerVoiceTypes.Length);
+
+                    ImGui.Separator();
+
+                    if (ImguiOSD.Tools.SimpleClickButton(Loc.T("Re-Init Switch Groups")))
+                    {
+                        WW.InitDefaultSwitchGroups();
+                    }
+
+                    bool switchPropFocused = false;
+                    WW.BuildSwitchPropImGui(ref switchPropFocused);
+                    if (switchPropFocused)
+                        anyFieldFocused = true;
+                    ImGui.PopItemWidth();
+                    
+                    
+                    
+                    
+                    
+                    
+
+                }
+                else if (soundManager.EngineType is EngineTypes.FMOD)
+                {
+                    var fmod = document.Fmod;
+                    //if (MenuBar.ClickItem("Reload All Sounds", fmod.IsInitialized))
+                    //{
+                    //    fmod.Purge();
+                    //    fmod.LoadMainFEVs();
+                    //    MainTaeScreen.Graph?.ViewportInteractor?.LoadFmodSoundsForCurrentModel();
+                    //}
+
+                    ImGui.Separator();
+
+                    if (MenuBar.ClickItem(Loc.T("STOP ALL SOUNDS"), NewFmodIns.EventSys != null, Loc.T("Escape")))
+                    {
+                        soundManager.StopAllSounds();
+                    }
+
+                    ImGui.PushItemWidth(OSD.DefaultItemWidth * 2);
+                    
+                    //if (ImGui.BeginListBox("Load Additional Sounds"))
+                    //{
+                            
+                    //    if (fmod.IsInitialized &&
+                    //                        fmod.MediaPath != null)
+                    //    {
+                    //        //var fevFiles = zzz_DocumentManager.CurrentDocument.GameData.SearchFiles("/sound", @".*\.fev");
+                    //        var fevFiles = fmod.ListOfAllFEVs;
+
+                    //        for (int i = 0; i < fevFiles.Count; i++)
+                    //        {
+                                
+                    //            var shortName = Path.GetFileNameWithoutExtension(fevFiles[i]);
+                    //            bool thisSelected = fmod.LoadedFEVs.Contains(shortName);
+                    //            //if (MenuBar.ClickItem(shortName, shortcut: thisSelected ? "(Loaded)" : null, selected: thisSelected))
+                    //            //{
+                    //            //    int underscoreIndex = shortName.IndexOf('_');
+                    //            //    if (underscoreIndex >= 0)
+                    //            //        shortName = shortName.Substring(Math.Min(underscoreIndex + 1, shortName.Length - 1));
+                    //            //    fmod.LoadInterrootFEV(shortName);
+                    //            //}
+
+                    //            bool newSelected = MenuBar.CheckboxBig(shortName, thisSelected);
+                    //            if (newSelected && !thisSelected)
+                    //            {
+                    //                int underscoreIndex = shortName.IndexOf('_');
+                    //                if (underscoreIndex >= 0)
+                    //                    shortName = shortName.Substring(Math.Min(underscoreIndex + 1, shortName.Length - 1));
+                    //                fmod.LoadInterrootFEV(shortName);
+                    //            }
+
+                                
+
+                    //        }
+                    //    }
+
+                    //    ImGui.EndListBox();
+                    //}
+                    
+
+                    ImGui.Separator();
+
+                    //FmodManager.ArmorMaterial = EnumSelectorItem("Player Armor Material",
+                    //        FmodManager.ArmorMaterial, new Dictionary<FmodManager.ArmorMaterialType, string>
+                    //    {
+                    //            { FmodManager.ArmorMaterialType.Plates, "Platemail" },
+                    //            { FmodManager.ArmorMaterialType.Chains, "Chainmail" },
+                    //            { FmodManager.ArmorMaterialType.Cloth, "Cloth" },
+                    //            { FmodManager.ArmorMaterialType.None, "Naked" },
+                    //    });
+
+                    if (ImGui.BeginListBox(Loc.T("Footstep Material")))
+                    {
+                        foreach (var mat in fmod.FloorMaterialNames)
+                        {
+                            if (MenuBar.CheckboxBig(Loc.TF("Material {0:D2}", mat.Key), mat.Key == fmod.FloorMaterial))
+                            {
+                                fmod.FloorMaterial = mat.Key;
+                            }
+                        }
+
+                        ImGui.EndListBox();
+                    }
+
+                    ImGui.Text(Loc.T("\n\n\n\n"));
+
+                    ImGui.PopItemWidth();
+                }
+                else if (soundManager.EngineType is EngineTypes.MagicOrchestra)
+                {
+
+
+            
+
+
+
+                    var fmod = document.Fmod;
+
+                    if (ImGui.BeginListBox(Loc.T("Footstep Material")))
+                    {
+                        foreach (var mat in fmod.FloorMaterialNames)
+                        {
+                            if (MenuBar.CheckboxBig(Loc.TF("Material {0:D2}", mat.Key), mat.Key == fmod.FloorMaterial))
+                            {
+                                fmod.FloorMaterial = mat.Key;
+                            }
+                        }
+
+                        ImGui.EndListBox();
+                    }
+                }
+                
+            }
+        }
+    }
+}

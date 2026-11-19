@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+本文件用 XML 描述一个字体，由 XNA 框架的内容管线（Content Pipeline）读取。
+照着下面的注释改，就能自定义游戏里这个字体的外观，以及可以绘制哪些字符。
+-->
+<XnaContent xmlns:Graphics="Microsoft.Xna.Framework.Content.Pipeline.Graphics">
+  <Asset Type="Graphics:FontDescription">
+
+    <!--
+改这个字符串即可更换要导入的字体。
+-->
+    <FontName>Noto Sans Mono CJK JP</FontName>
+
+    <!--
+Size 是浮点数，单位为磅（pt）。改这个值即可改变字体大小。
+-->
+    <Size>12</Size>
+
+    <!--
+Spacing 是浮点数，单位为像素。改这个值即可改变字符之间的间距。
+-->
+    <Spacing>0.5</Spacing>
+
+    <!--
+UseKerning 控制字体的排布。若为 true，则放置字符时会使用字距调整
+（kerning）信息。
+-->
+    <UseKerning>false</UseKerning>
+
+    <!--
+Style 控制字形样式。可填 "Regular"（常规）、"Bold"（粗体）、"Italic"（斜体）、
+"Bold, Italic"（粗斜体），区分大小写。
+-->
+    <Style>Regular</Style>
+
+    <!--
+取消这一行的注释后，当你绘制或测量包含字体里没有的字符的文本时，
+会用默认字符代替。
+-->
+    <!-- <DefaultCharacter>*</DefaultCharacter> -->
+
+    <!--
+CharacterRegions 控制字体里包含哪些字符。从 Start 到 End 之间的每一个字符
+都会被生成并可用于绘制。
+-->
+    <CharacterRegions>
+      <CharacterRegion>
+        <Start>&#32;</Start>
+        <End>&#169;</End>
+      </CharacterRegion>
+    </CharacterRegions>
+  </Asset>
+</XnaContent>
